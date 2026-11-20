@@ -18,7 +18,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const { MongoClient } = require("mongodb");
 
-const { tables } = require("../config/aws");
+const { dynamoClient, tables } = require("../config/aws");
 const User = require("../models/User");
 const Job = require("../models/Job");
 
@@ -87,7 +87,7 @@ const main = async () => {
 
     const target = process.env.DYNAMODB_ENDPOINT
         ? `DynamoDB Local at ${process.env.DYNAMODB_ENDPOINT}`
-        : `AWS DynamoDB in ${process.env.AWS_REGION || "us-east-1"}`;
+        : `AWS DynamoDB in ${await dynamoClient.config.region()}`;
 
     console.log(`Target: ${target}`);
     console.log(`Tables: ${tables.users}, ${tables.jobs}`);

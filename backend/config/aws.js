@@ -2,13 +2,14 @@ const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient } = require("@aws-sdk/lib-dynamodb");
 const { S3Client } = require("@aws-sdk/client-s3");
 
-// On Lambda, AWS_REGION and the credentials come from the function's role.
-// Locally, they come from backend/.env (see .env.example).
-const region = process.env.AWS_REGION || "us-east-1";
+// On Lambda, AWS sets AWS_REGION and the credentials come from the function's
+// role. Locally, they come from backend/.env (see .env.example) or, when those
+// lines are removed, from the account you signed in with (aws login / configure).
+const region = process.env.AWS_REGION;
 
 // DYNAMODB_ENDPOINT points at DynamoDB Local during development and tests.
 const dynamoClient = new DynamoDBClient({
-    region,
+    ...(region && { region }),
     ...(process.env.DYNAMODB_ENDPOINT && { endpoint: process.env.DYNAMODB_ENDPOINT })
 });
 
@@ -18,7 +19,7 @@ const db = DynamoDBDocumentClient.from(dynamoClient, {
 
 // S3_ENDPOINT is only for an S3-compatible emulator during development.
 const s3 = new S3Client({
-    region,
+    ...(region && { region }),
     ...(process.env.S3_ENDPOINT && {
         endpoint: process.env.S3_ENDPOINT,
         forcePathStyle: true

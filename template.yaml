@@ -26,10 +26,14 @@ Parameters:
 
   LambdaRoleName:
     Type: String
-    Default: LabRole
+    Default: ""
     Description: >
-      Existing IAM role the function runs as. AWS Academy Learner Lab can't
-      create roles, so it uses its built-in LabRole.
+      Leave empty on a normal AWS account: the stack creates a role with only
+      the permissions the API needs. On AWS Academy Learner Lab, which can't
+      create roles, enter LabRole.
+
+Conditions:
+  CreateRole: !Equals [!Ref LambdaRoleName, ""]
 
 Globals:
   Function:
@@ -101,13 +105,61 @@ Resources:
             AllowedHeaders: ["*"]
             MaxAge: 3000
 
+  # The function's permissions on a normal AWS account: write logs, read and
+  # write the two tables, and manage files under resumes/ in the bucket.
+  # Not created on Learner Lab, where LambdaRoleName is LabRole.
+  ApiFunctionRole:
+    Type: AWS::IAM::Role
+    Condition: CreateRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: campusconnect-data
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Tables
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:ConditionCheckItem
+                  - dynamodb:Query
+                Resource:
+                  - !GetAtt UsersTable.Arn
+                  - !Sub "${UsersTable.Arn}/index/*"
+                  - !GetAtt JobsTable.Arn
+                  - !Sub "${JobsTable.Arn}/index/*"
+              - Sid: ResumeFiles
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub "${ResumeBucket.Arn}/resumes/*"
+              # Lets S3 answer "not found" (404) instead of "forbidden" (403)
+              # when the app checks an upload that never arrived
+              - Sid: ResumeBucketList
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ResumeBucket.Arn
+
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: backend/
       Handler: lambda.handler
       Description: CampusConnect Express API
-      Role: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${LambdaRoleName}
+      Role: !If
+        - CreateRole
+        - !GetAtt ApiFunctionRole.Arn
+        - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${LambdaRoleName}
       Environment:
         Variables:
           NODE_ENV: production

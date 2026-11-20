@@ -1,6 +1,6 @@
 # Running CampusConnect on AWS
 
-This guide moves the CampusConnect backend from Render and MongoDB Atlas to AWS, using an **AWS Academy Learner Lab** account.
+This guide moves the CampusConnect backend from Render and MongoDB Atlas to AWS.
 
 | Part | Before | On AWS |
 |---|---|---|
@@ -22,14 +22,39 @@ S3 resume bucket ◄── browser uploads the PDF directly, using the signed fo
 
 AWS renames console menus from time to time. If a label below doesn't match exactly, look for the nearest equivalent.
 
-## Before you start: change the leaked passwords
+## Which AWS account?
 
-Until this branch, `backend/.env` was committed to the public GitHub repo. It held the MongoDB Atlas password, the JWT secret and the admin setup key. This branch stops tracking the file, but it is still in the repo's history, so anyone can read those values.
+Either works. Where the steps differ, this guide shows both.
 
-1. In MongoDB Atlas, open **Database Access** and change the password of the database user in `MONGO_URI`. Update it on Render too, so the old backend keeps working until you switch over.
-2. Use **new** values for `JWT_SECRET` and `ADMIN_SETUP_KEY` on AWS (step 3). Don't reuse the old ones.
+| | Your own AWS account (recommended) | AWS Academy Learner Lab |
+|---|---|---|
+| How you get it | Sign up yourself (step 1) | Your teacher invites you |
+| Signing in from the terminal | `aws login` in the browser | Copy keys from **AWS Details**; they expire after about 4 hours |
+| Region | `ap-south-1` (Mumbai), close to Indian users | `us-east-1` only (or `us-west-2`) |
+| Lambda permissions | The stack creates a role with only what the API needs | Uses the lab's built-in `LabRole` |
 
-## 1. Install the tools
+## About the old passwords
+
+The first version of this project committed `backend/.env` (MongoDB Atlas password, JWT secret, admin setup key) to Harsh's public repo. This repo's history was cleaned before its first push, so the file isn't here, but it is still readable in the original repo.
+
+1. In MongoDB Atlas, open **Database Access** and change the password of the database user in `MONGO_URI`.
+2. On AWS, use **new** values for `JWT_SECRET` and `ADMIN_SETUP_KEY` (step 4).
+
+## 1. Get an AWS account
+
+**Your own account:**
+
+1. Go to <https://aws.amazon.com/free> and choose **Create an AWS account**.
+2. Enter your email and an account name, then verify the email with the code AWS sends.
+3. Set the root password and fill in your contact details (choose **Personal**).
+4. Add a debit or credit card. It is for identity checks; Indian cards see a small refundable charge (about ₹2), and the card needs online/international payments turned on.
+5. Verify your phone number.
+6. Choose the **Free plan** when asked. It comes with free credits for the first months and doesn't charge your card. Check the current offer on the sign-up page.
+7. Optional but wise: in the console, search **Budgets**, choose **Create budget**, then the **Zero spend budget** template. AWS emails you if anything ever starts to cost money.
+
+**Learner Lab:** accept your teacher's AWS Academy invitation, then sign in at <https://awsacademy.instructure.com>.
+
+## 2. Install the tools
 
 You need Node.js 22 or newer, the AWS CLI and the AWS SAM CLI.
 
@@ -40,31 +65,44 @@ Check that they work:
 
 ```bash
 aws --version
+```
+
+```bash
 sam --version
 ```
 
-## 2. Start the lab and connect the CLI
+## 3. Connect the terminal to your account
 
-1. In AWS Academy, open **Learner Lab** and choose **Start Lab**. Wait until the dot next to **AWS** turns green.
+**Your own account:**
+
+```bash
+aws login
+```
+
+A browser window opens. Sign in the same way you sign in to the AWS console. If the terminal asks for a region, enter `ap-south-1`. The sign-in lasts for hours and renews itself; run `aws login` again if a command later says your session expired.
+
+If `aws login` doesn't work for your account, use an access key instead:
+
+1. In the console, open **IAM → Users → Create user**. Name it `campusconnect-admin` and attach the **AdministratorAccess** policy.
+2. Open the user, go to **Security credentials → Create access key**, and choose **Command Line Interface (CLI)**.
+3. Run `aws configure` and paste the two keys when asked. Region: `ap-south-1`.
+
+**Learner Lab:**
+
+1. Open the lab and choose **Start Lab**. Wait until the dot next to **AWS** turns green.
 2. Choose **AWS Details**, then **Show** next to **AWS CLI**.
-3. Copy the whole block (`[default]`, `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`) into the file `~/.aws/credentials` (on Windows, `C:\Users\<you>\.aws\credentials`). Replace whatever is there.
-4. Check it:
+3. Copy the whole block (`[default]` through the long `aws_session_token`) into `~/.aws/credentials` (on Windows, `C:\Users\<you>\.aws\credentials`), replacing what's there.
+4. Repeat these steps each time you start the lab: the keys stop working when the session ends (about 4 hours).
 
-   ```bash
-   aws sts get-caller-identity
-   ```
+**Check it worked** (either account):
 
-   The ARN should contain `assumed-role/voclabs`.
+```bash
+aws sts get-caller-identity
+```
 
-**These keys stop working when the lab session ends (about 4 hours).** Each time you start the lab again, repeat steps 2 and 3 before running `sam` or `aws` commands.
+It prints your account number and who you're signed in as.
 
-Learner Lab rules that shape this setup:
-
-- **Region:** only `us-east-1` (N. Virginia) and `us-west-2` (Oregon) are allowed. This guide uses `us-east-1`.
-- **No new IAM roles:** the Lambda function runs as the lab's built-in `LabRole`, which is the template's default.
-- **Budget:** the lab has a fixed credit. At college scale this stack costs cents: Lambda, API Gateway and DynamoDB charge per request, and S3 holds a few MB of PDFs. Watch the budget shown on the lab page.
-
-## 3. Make two secrets
+## 4. Make two secrets
 
 Run this twice and keep both outputs somewhere private:
 
@@ -74,7 +112,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 The first is your **JWT secret** (signs login tokens). The second is your **admin setup key** (needed once, to create the first admin).
 
-## 4. Deploy
+## 5. Deploy
 
 From the repository root (the folder that holds `template.yaml`):
 
@@ -88,39 +126,37 @@ sam deploy --guided
 
 Answer the questions like this:
 
-| Question | Answer |
-|---|---|
-| Stack Name | `campusconnect` |
-| AWS Region | `us-east-1` |
-| Parameter JwtSecret | your first secret |
-| Parameter AdminSetupKey | your second secret |
-| Parameter AllowedOrigins | your frontend address plus local dev, comma-separated with **no spaces** and no trailing `/`, for example `https://campusconnect.vercel.app,http://localhost:5173`. Use `*` while testing. |
-| Parameter LambdaRoleName | `LabRole` (press Enter) |
-| Confirm changes before deploy | `y` |
-| Allow SAM CLI IAM role creation | `n` (the lab can't create roles, and this template doesn't need any). If it then asks for **Capabilities**, press Enter. |
-| Disable rollback | `n` |
-| ApiFunction has no authentication. Is this okay? | `y` (the Express app checks login tokens itself) |
-| Save arguments to configuration file | `y` |
+| Question | Your own account | Learner Lab |
+|---|---|---|
+| Stack Name | `campusconnect` | `campusconnect` |
+| AWS Region | `ap-south-1` | `us-east-1` |
+| Parameter JwtSecret | your first secret | same |
+| Parameter AdminSetupKey | your second secret | same |
+| Parameter AllowedOrigins | frontend address plus local dev, comma-separated with **no spaces** and no trailing `/`, e.g. `https://campusconnect.vercel.app,http://localhost:5173`. Use `*` while testing. | same |
+| Parameter LambdaRoleName | leave empty (press Enter) | `LabRole` |
+| Confirm changes before deploy | `y` | `y` |
+| Allow SAM CLI IAM role creation | `y` | `n` (if it then asks for **Capabilities**, press Enter) |
+| Disable rollback | `n` | `n` |
+| ApiFunction has no authentication. Is this okay? | `y` (the Express app checks login tokens itself) | `y` |
+| Save arguments to configuration file | `y` | `y` |
 
 When it asks **Deploy this changeset?**, answer `y`. It takes 2 to 4 minutes. At the end it prints **Outputs**:
 
-- `ApiUrl`: the backend address, for example `https://abc123.execute-api.us-east-1.amazonaws.com/api`
+- `ApiUrl`: the backend address, for example `https://abc123.execute-api.ap-south-1.amazonaws.com/api`
 - `UsersTableName`, `JobsTableName`: the two DynamoDB tables
 - `ResumeBucketName`: the S3 bucket for resumes
 
 Check the backend is live (open `ApiUrl` without the `/api` at the end):
 
 ```bash
-curl https://abc123.execute-api.us-east-1.amazonaws.com/
+curl https://abc123.execute-api.ap-south-1.amazonaws.com/
 ```
 
 It should answer `CampusConnect Backend is Running Successfully!`
 
 `samconfig.toml` now holds your answers, including the secrets. It is in `.gitignore`; keep it out of git. Later deploys are just `sam build` then `sam deploy`.
 
-If `sam deploy` says the runtime `nodejs24.x` isn't supported, change `Runtime` in `template.yaml` to `nodejs22.x` and deploy again.
-
-## 5. Copy the existing data from Atlas (optional)
+## 6. Copy the existing data from Atlas (optional)
 
 Skip this if you want to start with an empty database.
 
@@ -130,10 +166,9 @@ The script copies every user and job. Users keep their MongoDB id and their pass
 2. Make `backend/.env` from [`backend/.env.example`](backend/.env.example) and set:
    - `MONGO_URI`: the Atlas connection string (with the new password)
    - `USERS_TABLE` and `JOBS_TABLE`: the names from the deploy outputs
-   - `AWS_REGION=us-east-1`
-   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`: from **AWS Details** in the lab
-   - delete the `DYNAMODB_ENDPOINT` line, so the script writes to AWS and not to DynamoDB Local
-3. Count first, then copy:
+   - `AWS_REGION`: the region you deployed to
+3. In the same file, **delete** the `DYNAMODB_ENDPOINT`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` lines, so the script writes to AWS using the account you signed in with in step 3.
+4. Count first, then copy:
 
    ```bash
    npm run copy-from-atlas -- --dry-run
@@ -143,21 +178,21 @@ The script copies every user and job. Users keep their MongoDB id and their pass
    npm run copy-from-atlas
    ```
 
-If the old database had an admin, that admin comes across too, and you can skip step 6.
+If the old database had an admin, that admin comes across too, and you can skip step 7.
 
-## 6. Create the first admin
+## 7. Create the first admin
 
-Skip this if you copied an admin in step 5. Replace the address, email, password and key:
+Skip this if you copied an admin in step 6. Replace the address, email, password and key:
 
 ```bash
-curl -X POST https://abc123.execute-api.us-east-1.amazonaws.com/api/auth/create-admin \
+curl -X POST https://abc123.execute-api.ap-south-1.amazonaws.com/api/auth/create-admin \
   -H "Content-Type: application/json" \
   -d '{"name":"Placement Cell","email":"admin@college.edu","password":"a-strong-password","setupKey":"YOUR_ADMIN_SETUP_KEY"}'
 ```
 
 This works only once: after an admin exists, the endpoint refuses.
 
-## 7. Point the frontend at AWS
+## 8. Point the frontend at AWS
 
 The frontend reads the backend address from `VITE_API_URL`.
 
@@ -166,18 +201,23 @@ The frontend reads the backend address from `VITE_API_URL`.
 
 If you used `*` for AllowedOrigins, switch to the real frontend address now: run `sam deploy --guided` again and change only that answer. The same list controls which sites may upload resumes to S3.
 
-## 8. See it in the AWS console
+## 9. See it in the AWS console
+
+Pick the region you deployed to (top right of the console) first.
 
 - **Lambda → Functions → campusconnect-ApiFunction-… → Monitor → View CloudWatch logs:** every request, and the error details the API doesn't send to browsers.
 - **DynamoDB → Explore items:** pick the users or jobs table. In the users table, items whose `id` starts with `EMAIL#` are email locks (see below), not extra users.
 - **S3 → Buckets → campusconnect-resumebucket-… → resumes/:** one folder per student.
 - **API Gateway → APIs → campusconnect:** the HTTP API that sends every request to Lambda.
+- **CloudFormation → Stacks → campusconnect:** everything the template created, in one place.
 
-Data in DynamoDB and S3 stays between lab sessions. Before a demo, open the API address to check it answers. If it doesn't, start the lab first.
+On Learner Lab, data in DynamoDB and S3 stays between lab sessions. Before a demo, open the API address to check it answers. If it doesn't, start the lab first.
 
 ## How it works (useful for a viva)
 
 **Why Lambda and not a server?** Lambda runs the Express app only when a request arrives and charges per request, so an idle college project costs nothing. [`backend/lambda.js`](backend/lambda.js) wraps the same Express app with `serverless-http`; [`backend/server.js`](backend/server.js) runs it on a normal port for local development. The first request after an idle spell takes about a second longer (a "cold start").
+
+**Least privilege.** On a normal account the template creates the function's IAM role with only what it uses: writing logs, reading and writing the two tables, and handling files under `resumes/` in the bucket.
 
 **DynamoDB tables.** Each table's key is `id`. Two secondary indexes answer the app's list queries without scanning the whole table:
 
@@ -214,13 +254,15 @@ npm install
 npm run dev                 # uses http://localhost:5000/api unless VITE_API_URL is set
 ```
 
-To try resume uploads locally, set `RESUME_BUCKET` to the deployed bucket name and put the lab's AWS keys (including `AWS_SESSION_TOKEN`) in `backend/.env`.
+To try resume uploads locally, set `RESUME_BUCKET` to the deployed bucket name, and delete the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` lines from `backend/.env` so the API uses your signed-in AWS account.
 
 **Tests** run against DynamoDB Local, with S3 faked:
 
 ```bash
 npm test
 ```
+
+If port 8000 is busy, run DynamoDB Local on another port and tell the tests, e.g. `TEST_DYNAMODB_ENDPOINT=http://localhost:8011 npm test`.
 
 To include the Atlas copy test, start a throwaway MongoDB and point the tests at it:
 
@@ -238,8 +280,4 @@ TEST_MONGO_URI=mongodb://localhost:27099 npm test
 sam delete
 ```
 
-This removes the Lambda function and the API. The two tables and the resume bucket are **kept** on purpose, so a mistaken delete can't wipe student data. Delete them by hand in the DynamoDB and S3 consoles if you really want them gone.
-
-## Using a personal AWS account instead
-
-Everything works the same except the role. Create an IAM role for Lambda with the `AWSLambdaBasicExecutionRole` policy plus read/write access to the two tables and the bucket, then give its name as `LambdaRoleName` when you deploy. You can use any region.
+This removes the Lambda function, its role and the API. The two tables and the resume bucket are **kept** on purpose, so a mistaken delete can't wipe student data. Delete them by hand in the DynamoDB and S3 consoles if you really want them gone.
