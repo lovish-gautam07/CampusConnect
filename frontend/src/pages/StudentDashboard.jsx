@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
+import ResumeCard from "../components/ResumeCard";
 import "./StudentDashboard.css";
 
 function StudentDashboard() {
@@ -134,6 +135,8 @@ function StudentDashboard() {
                 </header>
 
                 <section className="dashboard-content">
+
+                    {activeTab === "My Profile" && <ResumeCard />}
 
                     <div className="welcome-banner">
                         <div>

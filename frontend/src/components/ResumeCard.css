@@ -1,0 +1,113 @@
+.resume-card {
+    margin-bottom: 25px;
+    scroll-margin-top: 20px;
+}
+
+.resume-hint {
+    font-size: 12px;
+    color: #8993a6;
+    margin-top: 10px;
+}
+
+.resume-file {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 14px;
+    border: 1px solid #edf0f5;
+    border-radius: 9px;
+    color: #3159d9;
+}
+
+.resume-file > div {
+    flex: 1;
+    min-width: 0;
+}
+
+.resume-file strong {
+    display: block;
+    font-size: 13px;
+    color: #1f2937;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.resume-file small {
+    display: block;
+    font-size: 11px;
+    color: #8993a6;
+    margin-top: 4px;
+}
+
+.resume-file button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    border: none;
+    background: #edf1ff;
+    color: #3159d9;
+    padding: 8px 12px;
+    border-radius: 7px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.resume-file button.resume-delete {
+    background: #fff0f0;
+    color: #dc4545;
+    padding: 8px;
+}
+
+.resume-file button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.resume-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 18px;
+    padding: 11px 16px;
+    background: #3159d9;
+    color: white;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.resume-upload.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.resume-upload input {
+    display: none;
+}
+
+.resume-error,
+.resume-notice {
+    font-size: 12px;
+    margin-top: 12px;
+}
+
+.resume-error {
+    color: #dc4545;
+}
+
+.resume-notice {
+    color: #16a34a;
+}
+
+@media (max-width: 600px) {
+    .resume-file {
+        flex-wrap: wrap;
+    }
+
+    .resume-file > div {
+        flex-basis: calc(100% - 40px);
+    }
+}

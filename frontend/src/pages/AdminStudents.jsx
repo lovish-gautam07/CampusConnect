@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { Users, Search, Trash2, ArrowLeft, RefreshCw } from "lucide-react";
+import { Users, Search, Trash2, ArrowLeft, RefreshCw, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import API from "../api";
 import "./AdminStudents.css";
@@ -66,6 +66,28 @@ function AdminStudents() {
             alert(
                 err.response?.data?.message ||
                 "Failed to delete student."
+            );
+        }
+    };
+
+    // Resumes are private in S3; the backend returns a link that expires in 5 minutes
+    const viewResume = async (id) => {
+        // Open the tab first so the browser doesn't block it as a pop-up
+        const tab = window.open("", "_blank");
+
+        try {
+            const response = await API.get(`/admin/students/${id}/resume`);
+
+            if (tab) {
+                tab.location = response.data.url;
+            } else {
+                window.location.assign(response.data.url);
+            }
+        } catch (err) {
+            tab?.close();
+            alert(
+                err.response?.data?.message ||
+                "Failed to open the resume."
             );
         }
     };
@@ -140,6 +162,7 @@ function AdminStudents() {
                                 <th>Department</th>
                                 <th>Enrollment Number</th>
                                 <th>Phone</th>
+                                <th>Resume</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -159,6 +182,20 @@ function AdminStudents() {
                                     <td>{student.enrollmentNumber || "Not provided"}</td>
 
                                     <td>{student.phone || "Not provided"}</td>
+
+                                    <td>
+                                        {student.resume ? (
+                                            <button
+                                                className="view-resume-button"
+                                                onClick={() => viewResume(student._id)}
+                                                title={`Open ${student.resume.fileName}`}
+                                            >
+                                                <FileText size={16} /> View
+                                            </button>
+                                        ) : (
+                                            "Not uploaded"
+                                        )}
+                                    </td>
 
                                     <td>
                                         <button

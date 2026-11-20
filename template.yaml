@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CampusConnect backend on AWS: the Express API on Lambda behind API Gateway,
+  users and jobs in DynamoDB, and student resumes in a private S3 bucket.
+
+Parameters:
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: Secret used to sign login tokens. Use a long random string (at least 32 characters).
+
+  AdminSetupKey:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: One-time key needed to create the first admin account.
+
+  AllowedOrigins:
+    Type: String
+    Default: "*"
+    Description: >
+      Comma-separated frontend URLs allowed to call the API and upload resumes,
+      for example https://campusconnect.vercel.app,http://localhost:5173. Use * to allow any site.
+
+  LambdaRoleName:
+    Type: String
+    Default: LabRole
+    Description: >
+      Existing IAM role the function runs as. AWS Academy Learner Lab can't
+      create roles, so it uses its built-in LabRole.
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Timeout: 15
+
+Resources:
+  # Users and their email locks. Keep in sync with backend/config/schema.js.
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+        - { AttributeName: role, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: role-createdAt-index
+          KeySchema:
+            - { AttributeName: role, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  # Job postings. Keep in sync with backend/config/schema.js.
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  # Private bucket for resumes. Browsers upload with signed forms and read
+  # with signed links that expire after 5 minutes; nothing here is public.
+  ResumeBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [POST]
+            AllowedOrigins: !Split [",", !Ref AllowedOrigins]
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: lambda.handler
+      Description: CampusConnect Express API
+      Role: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${LambdaRoleName}
+      Environment:
+        Variables:
+          NODE_ENV: production
+          USERS_TABLE: !Ref UsersTable
+          JOBS_TABLE: !Ref JobsTable
+          RESUME_BUCKET: !Ref ResumeBucket
+          JWT_SECRET: !Ref JwtSecret
+          ADMIN_SETUP_KEY: !Ref AdminSetupKey
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
+      Events:
+        Api:
+          # No path or method: every request goes to Express, which does the routing
+          Type: HttpApi
+
+Outputs:
+  ApiUrl:
+    Description: Put this in the frontend as VITE_API_URL
+    Value: !Sub https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/api
+  UsersTableName:
+    Value: !Ref UsersTable
+  JobsTableName:
+    Value: !Ref JobsTable
+  ResumeBucketName:
+    Value: !Ref ResumeBucket

@@ -147,6 +147,23 @@
     background: #ffe0e0;
 }
 
+.view-resume-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: none;
+    background: #edf1ff;
+    color: #3159d9;
+    padding: 8px 11px;
+    border-radius: 7px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.view-resume-button:hover {
+    background: #dfe6ff;
+}
+
 .students-message,
 .students-error {
     background: white;

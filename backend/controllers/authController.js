@@ -7,12 +7,27 @@ const jwt = require("jsonwebtoken");
 const generateToken = (user) => {
     return jwt.sign(
         {
-            id: user._id,
+            id: user.id,
             role: user.role
         },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
     );
+};
+
+const userSummary = (user) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role
+});
+
+const optionalText = (value) =>
+    value === undefined || value === null ? "" : String(value).trim();
+
+const optionalYear = (value) => {
+    const year = Number(value);
+    return value === undefined || value === "" || !Number.isInteger(year) ? undefined : year;
 };
 
 // REGISTER STUDENT
@@ -26,7 +41,7 @@ const registerUser = async (req, res) => {
             department,
             enrollmentNumber,
             graduationYear
-        } = req.body;
+        } = req.body || {};
 
         if (!name || !email || !password) {
             return res.status(400).json({
@@ -34,32 +49,22 @@ const registerUser = async (req, res) => {
             });
         }
 
-        if (password.length < 6) {
+        if (String(password).length < 6) {
             return res.status(400).json({
                 message: "Password must contain at least 6 characters."
             });
         }
 
-        const existingUser = await User.findOne({
-            email: email.toLowerCase().trim()
-        });
+        const hashedPassword = await bcrypt.hash(String(password), 10);
 
-        if (existingUser) {
-            return res.status(409).json({
-                message: "An account with this email already exists."
-            });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const user = await User.create({
-            name,
+        const user = await User.createUser({
+            name: String(name).trim(),
             email,
             password: hashedPassword,
-            phone,
-            department,
-            enrollmentNumber,
-            graduationYear,
+            phone: optionalText(phone),
+            department: optionalText(department),
+            enrollmentNumber: optionalText(enrollmentNumber),
+            graduationYear: optionalYear(graduationYear),
             role: "student"
         });
 
@@ -68,15 +73,16 @@ const registerUser = async (req, res) => {
         res.status(201).json({
             message: "Registration successful!",
             token,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            }
+            user: userSummary(user)
         });
 
     } catch (error) {
+        if (error instanceof User.DuplicateEmailError) {
+            return res.status(409).json({
+                message: "An account with this email already exists."
+            });
+        }
+
         console.error("Registration Error:", error);
 
         res.status(500).json({
@@ -88,7 +94,7 @@ const registerUser = async (req, res) => {
 // LOGIN USER
 const loginUser = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body || {};
 
         if (!email || !password) {
             return res.status(400).json({
@@ -96,9 +102,7 @@ const loginUser = async (req, res) => {
             });
         }
 
-        const user = await User.findOne({
-            email: email.toLowerCase().trim()
-        });
+        const user = await User.findByEmail(email);
 
         if (!user) {
             return res.status(401).json({
@@ -107,7 +111,7 @@ const loginUser = async (req, res) => {
         }
 
         const isMatch = await bcrypt.compare(
-            password,
+            String(password),
             user.password
         );
 
@@ -122,12 +126,7 @@ const loginUser = async (req, res) => {
         res.status(200).json({
             message: "Login successful!",
             token,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            }
+            user: userSummary(user)
         });
 
     } catch (error) {
@@ -142,7 +141,7 @@ const loginUser = async (req, res) => {
 // CREATE FIRST ADMIN ACCOUNT
 const createAdmin = async (req, res) => {
     try {
-        const { name, email, password, setupKey } = req.body;
+        const { name, email, password, setupKey } = req.body || {};
 
         if (!name || !email || !password || !setupKey) {
             return res.status(400).json({
@@ -157,34 +156,22 @@ const createAdmin = async (req, res) => {
             });
         }
 
-        const existingAdmin = await User.findOne({ role: "admin" });
-
-        if (existingAdmin) {
+        if (await User.adminExists()) {
             return res.status(403).json({
                 message: "An admin account already exists."
             });
         }
 
-        const existingUser = await User.findOne({
-            email: email.toLowerCase().trim()
-        });
-
-        if (existingUser) {
-            return res.status(409).json({
-                message: "An account with this email already exists."
-            });
-        }
-
-        if (password.length < 8) {
+        if (String(password).length < 8) {
             return res.status(400).json({
                 message: "Admin password must contain at least 8 characters."
             });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(String(password), 10);
 
-        const admin = await User.create({
-            name,
+        const admin = await User.createUser({
+            name: String(name).trim(),
             email,
             password: hashedPassword,
             role: "admin"
@@ -192,15 +179,16 @@ const createAdmin = async (req, res) => {
 
         res.status(201).json({
             message: "Admin account created successfully!",
-            admin: {
-                id: admin._id,
-                name: admin.name,
-                email: admin.email,
-                role: admin.role
-            }
+            admin: userSummary(admin)
         });
 
     } catch (error) {
+        if (error instanceof User.DuplicateEmailError) {
+            return res.status(409).json({
+                message: "An account with this email already exists."
+            });
+        }
+
         console.error("Admin Creation Error:", error);
 
         res.status(500).json({

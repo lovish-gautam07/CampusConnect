@@ -1,44 +1,21 @@
 
-const express = require("express");
-const cors = require("cors");
+// Runs the API on your computer: npm run dev
 require("dotenv").config();
 
-const connectDB = require("./config/db");
-const authRoutes = require("./routes/authRoutes");
-const jobRoutes = require("./routes/jobRoutes");
-const adminRoutes = require("./routes/adminRoutes");
+const app = require("./app");
 
-const app = express();
+if (!process.env.JWT_SECRET) {
+    console.error("JWT_SECRET is not set. Copy .env.example to .env and fill it in.");
+    process.exit(1);
+}
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+const PORT = process.env.PORT || 5000;
 
-// Authentication Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/jobs", jobRoutes);
-app.use("/api/admin", adminRoutes);
-
-// Home Route
-app.get("/", (req, res) => {
-    res.send("CampusConnect Backend is Running Successfully!");
-});
-
-// Start Server
-const startServer = async () => {
-    try {
-        await connectDB();
-
-        const PORT = process.env.PORT || 5000;
-
-        app.listen(PORT, () => {
-            console.log(`CampusConnect Server running on port ${PORT}`);
-        });
-
-    } catch (error) {
+app.listen(PORT, (error) => {
+    if (error) {
         console.error("Server startup failed:", error.message);
         process.exit(1);
     }
-};
 
-startServer();
+    console.log(`CampusConnect Server running on port ${PORT}`);
+});

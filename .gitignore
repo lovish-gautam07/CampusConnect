@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Secrets: never commit these. Copy the matching .env.example instead.
+.env
+.env.*
+!.env.example
+!.env.production
+
+# AWS SAM build output and local deploy settings
+.aws-sam/
+samconfig.toml
+
+# OS / editor
+.DS_Store
