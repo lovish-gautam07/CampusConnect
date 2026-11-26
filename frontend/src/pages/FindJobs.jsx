@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import API from "../api";
 import "./FindJobs.css";
 
@@ -11,30 +11,35 @@ function FindJobs() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    // Fetch jobs from MongoDB
-    const fetchJobs = async () => {
-        try {
-            setLoading(true);
-            setError("");
-
-            const response = await API.get("/jobs", {
-                params: {
-                    search,
-                    location,
-                    jobType
-                }
-            });
-
-            setJobs(response.data.jobs);
-        } catch (err) {
-            setError("Unable to load jobs. Please try again.");
-        } finally {
-            setLoading(false);
-        }
+    // Show "Loading jobs..." again whenever a filter changes
+    const onFilterChange = (setFilter) => (e) => {
+        setFilter(e.target.value);
+        setLoading(true);
     };
 
+    // Load jobs for the current filters. When a filter changes before a
+    // request finishes, that older request's result is ignored, so a slow
+    // response can't replace the results of a newer search.
     useEffect(() => {
-        fetchJobs();
+        let ignore = false;
+
+        API.get("/jobs", { params: { search, location, jobType } })
+            .then((response) => {
+                if (ignore) return;
+                setJobs(response.data.jobs);
+                setError("");
+            })
+            .catch(() => {
+                if (ignore) return;
+                setError("Unable to load jobs. Please try again.");
+            })
+            .finally(() => {
+                if (!ignore) setLoading(false);
+            });
+
+        return () => {
+            ignore = true;
+        };
     }, [search, location, jobType]);
 
     return (
@@ -62,19 +67,19 @@ function FindJobs() {
                     type="text"
                     placeholder="Search company or job role..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={onFilterChange(setSearch)}
                 />
 
                 <input
                     type="text"
                     placeholder="Enter location..."
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={onFilterChange(setLocation)}
                 />
 
                 <select
                     value={jobType}
-                    onChange={(e) => setJobType(e.target.value)}
+                    onChange={onFilterChange(setJobType)}
                 >
                     <option value="">All Job Types</option>
                     <option value="Full Time">Full Time</option>

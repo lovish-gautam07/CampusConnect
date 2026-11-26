@@ -12,34 +12,44 @@ function AdminStudents() {
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-
-    const fetchStudents = async () => {
-        try {
-            setLoading(true);
-            setError("");
-
-            const token = localStorage.getItem("token");
-
-            const response = await API.get("/admin/students", {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            });
-
-            setStudents(response.data.students);
-        } catch (err) {
-            setError(
-                err.response?.data?.message ||
-                "Unable to load students."
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Bumped by the Refresh button to load the list again
+    const [reloadCount, setReloadCount] = useState(0);
 
     useEffect(() => {
-        fetchStudents();
-    }, []);
+        let ignore = false;
+        const token = localStorage.getItem("token");
+
+        API.get("/admin/students", {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        })
+            .then((response) => {
+                if (ignore) return;
+                setStudents(response.data.students);
+                setError("");
+            })
+            .catch((err) => {
+                if (ignore) return;
+                setError(
+                    err.response?.data?.message ||
+                    "Unable to load students."
+                );
+            })
+            .finally(() => {
+                if (!ignore) setLoading(false);
+            });
+
+        return () => {
+            ignore = true;
+        };
+    }, [reloadCount]);
+
+    const refreshStudents = () => {
+        setLoading(true);
+        setError("");
+        setReloadCount((count) => count + 1);
+    };
 
     const deleteStudent = async (id, name) => {
         const confirmed = window.confirm(
@@ -138,7 +148,7 @@ function AdminStudents() {
                     />
                 </div>
 
-                <button onClick={fetchStudents}>
+                <button onClick={refreshStudents}>
                     <RefreshCw size={17} /> Refresh
                 </button>
 
